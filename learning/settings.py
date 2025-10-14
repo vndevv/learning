@@ -131,4 +131,5 @@ STATICFILES_DIRS = [
     BASE_DIR / 'static',
 ]
 
-LOGIN_REDIRECT_URL = 'stock:list'
+LOGIN_REDIRECT_URL = 'stock:account'
+LOGIN_URL = 'login'
