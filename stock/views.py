@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 
 from stock.models import Stock, AccountCurrency, AccountStock
-from stock.forms import BuySellForm
+from stock.forms import BuySellForm, SellForm
 
 
 def stock_list(request):
@@ -56,6 +56,10 @@ def stock_buy(request, pk):
             acc_currency.amount = acc_currency.amount - buy_cost
             acc_stock.save()
             acc_currency.save()
+
+            cache.delete(f'currencies_{request.user.username}')
+            cache.delete(f'stocks_{request.user.username}')
+
             return redirect('stock:list')
 
     context = {
@@ -64,6 +68,52 @@ def stock_buy(request, pk):
     }
 
     return render(request, 'stock.html', context)
+
+
+@login_required
+def stock_sell(request, pk):
+    stock = get_object_or_404(Stock, pk=pk)
+    form = SellForm(initial={'price': stock.get_random_price()})
+
+    if request.method == "POST":
+        form = SellForm(request.POST)
+        if form.is_valid():
+            amount = form.cleaned_data['amount']
+            price = form.cleaned_data['price']
+            sell_income = price * amount
+
+            acc_stock = AccountStock.objects.filter(
+                account=request.user.account, stock=stock
+            ).first()
+
+            if acc_stock is None or acc_stock.amount < amount:
+                form.add_error(None, f"Недостаточно акций {stock.ticker} для продажи.")
+            else:
+                acc_currency, created = AccountCurrency.objects.get_or_create(
+                    account=request.user.account,
+                    currency=stock.currency,
+                    defaults={'amount': 0}
+                )
+
+                acc_stock.amount -= amount
+                acc_currency.amount += sell_income
+
+                if acc_stock.amount == 0:
+                    acc_stock.delete()
+                else:
+                    acc_stock.save()
+                acc_currency.save()
+
+                cache.delete(f'currencies_{request.user.username}')
+                cache.delete(f'stocks_{request.user.username}')
+
+                return redirect('stock:list')
+
+    context = {
+        'stock': stock,
+        'form': form
+    }
+    return render(request, 'sell.html', context)
 
 
 @login_required
